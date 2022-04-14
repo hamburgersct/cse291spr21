@@ -172,6 +172,8 @@ def evaluate(data_source):
 def train():
     # Turn on training mode which enables dropout.
     model.train()
+    epoch_loss_sum = 0.
+    samples = 0
     total_loss = 0.
     start_time = time.time()
     ntokens = len(corpus.dictionary)
@@ -207,10 +209,13 @@ def train():
                       elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
             # Get training loss per 200 batches
             train_loss_200_batches.append(cur_loss)
+            epoch_loss_sum += total_loss
+            samples += args.log_interval
             total_loss = 0
             start_time = time.time()
         if args.dry_run:
             break
+    return epoch_loss_sum / samples
 
 
 def export_onnx(path, batch_size, seq_len):
@@ -231,9 +236,9 @@ best_val_loss = None
 try:
     for epoch in range(1, args.epochs+1):
         epoch_start_time = time.time()
-        train()
-        # Get training loss for this epoch
-        train_loss_per_epoch.append(train_loss_200_batches[-1])
+        train_loss = train()
+        # Get training loss per epoch
+        train_loss_per_epoch.append(train_loss)
         val_loss = evaluate(val_data)
         print('-' * 89)
         print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
@@ -274,13 +279,26 @@ if len(args.onnx_export) > 0:
     # Export the model in ONNX format.
     export_onnx(args.onnx_export, batch_size=1, seq_len=args.bptt)
 
-
+print(valid_loss_per_epoch)
+print(train_loss_per_epoch)
 ######################
 # Plotting the results
 ######################
+plt.figure()
 plt.plot([x for x in range(200, 200 + len(train_loss_200_batches)
          * 200, 200)], train_loss_200_batches)
 plt.title('Training loss per 200 batches')
 plt.xlabel('Batch number')
 plt.ylabel('Training loss')
 plt.savefig('train_loss_200_batches.png')
+
+plt.figure()
+plt.plot([x for x in range(1, len(valid_loss_per_epoch) + 1)],
+         valid_loss_per_epoch)
+plt.plot([x for x in range(1, len(train_loss_per_epoch) + 1)],
+         train_loss_per_epoch)
+plt.title('Training and validation loss per epoch')
+plt.xlabel('Epoch number')
+plt.ylabel('Training and validation loss')
+plt.legend(['Validation loss', 'Training loss'])
+plt.savefig('train_valid_loss_per_epoch.png')
